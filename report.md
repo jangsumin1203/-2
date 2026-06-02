@@ -338,4 +338,33 @@ Future work로는 tail error를 줄이기 위한 conservative fallback을 추가
 
 [3] T. Hastie, R. Tibshirani, and J. Friedman, The Elements of Statistical Learning, Springer, 2009.
 
-Huber의 robust estimation은 큰 잔차의 영향을 줄이는 손실 함수를 제안한 고전적 방법론이다. 본 프로젝트는 이 아이디어를 단순히 이상치 제거에만 사용하지 않고, Random Forest의 데이터 기반 초기값 `p_RF`, 기지국별 거리 구간 bias 보정, residual-based anchor reweighting과 결합하여 실내 측위 문제에 맞게 확장하였다. Strang and Borre의 위치 추정 및 GPS 관련 least squares 논의는 거리 방정식 기반 multilateration의 기본 배경으로 참고하였다. 그러나 본 프로젝트는 단순 least squares multilateration을 그대로 적용하지 않고, Huber IRLS, 기지국 신뢰도, 구간별 bias correction, RF 초기값을 결합하여 실내 RTT 데이터의 outlier와 bias에 대응하도록 수정하였다. The Elements of Statistical Learning은 Random Forest와 ensemble learning의 일반적 배경으로 참고하였으며, 본 프로젝트의 Router 구조는 해당 문헌의 특정 알고리즘을 그대로 구현한 것이 아니라 본 데이터의 중간 실험 결과를 바탕으로 설계한 분류 기반 후보 선택기이다.
+본 프로젝트의 참고문헌은 알고리즘을 그대로 가져오기 위해 사용한 것이 아니라, RTT 기반 실내 측위 문제를 해결하는 과정에서 필요한 이론적 근거를 확인하기 위해 사용하였다. 실제 구현에서는 제공된 DH_FR1.mat 데이터의 구조, 18개 기지국 배치, public/hidden test 조건, 제출용 main.py 규격에 맞게 각 방법을 변형하였다. 최종 코드는 train.py에서 public 데이터로 model.pkl을 학습하고, main.py에서 model.pkl을 불러와 hidden test의 d_hat과 BS_positions만으로 p_hat을 반환하는 구조로 작성하였다. 특히 model.pkl에는 rf_model, anchor profile, gamma_teacher, expert_router, settings가 함께 저장되도록 구성하였다. :contentReference[oaicite:0]{index=0}
+
+[1] P. J. Huber, “Robust Estimation of a Location Parameter,” The Annals of Mathematical Statistics, 1964.
+
+Huber의 논문에서는 이상치가 포함된 데이터에서 평균이나 일반적인 least squares 추정이 크게 흔들릴 수 있다는 문제를 다루고, 큰 잔차의 영향력을 제한하는 robust estimation의 기본 아이디어를 제시한다. 본 프로젝트에서는 이 논문의 핵심 아이디어인 “작은 잔차는 일반적인 제곱 오차처럼 처리하고, 큰 잔차는 가중치를 낮추어 영향력을 제한한다”는 점을 참고하였다.
+
+본 프로젝트에서 직접 수행한 부분은 이 robust estimation 개념을 RTT 거리 기반 위치 추정 문제에 맞게 바꾼 것이다. 먼저 각 UE 후보 위치 p에 대해 anchor i와의 예측 거리 ||p - b_i||와 보정 거리 d_i^c의 차이를 잔차로 정의하였다. 이후 MAD 기반 scale을 이용해 잔차를 정규화하고, Huber weight를 계산하여 큰 잔차를 가진 anchor의 영향이 줄어들도록 하였다. 단순히 Huber loss만 적용한 것이 아니라, 기지국별 reliability와 현재 샘플에서의 거리 일관성 weight를 함께 곱해 total weight를 만들었다. 또한 residual-based reweighting을 추가하여 특정 anchor가 위치해를 과도하게 흔드는 경우 한 번 더 가중치를 낮추도록 설계하였다.
+
+즉, [1]에서 참고한 것은 Huber loss의 robust한 잔차 처리 원리이고, 본 프로젝트에서 직접 한 일은 이를 18개 RTT anchor의 거리 잔차, MAD scale, anchor reliability, residual-based influence reweighting과 결합하여 Huber IRLS 기반 robust multilateration으로 구현한 것이다. 보고서의 Huber IRLS, 잔차 기반 재가중, tail risk 분석은 이 참고문헌의 개념을 본 과제 환경에 맞게 확장한 결과이다. :contentReference[oaicite:1]{index=1}
+
+[2] G. Strang and K. Borre, Linear Algebra, Geodesy, and GPS, Wellesley-Cambridge Press, 1997.
+
+Strang과 Borre의 책은 GPS와 측지학에서 위치를 추정할 때 선형대수, 최소제곱법, 거리 기반 위치 결정이 어떻게 사용되는지 설명한다. 본 프로젝트에서는 여러 기준점(anchor)과의 거리 정보를 동시에 만족하는 위치를 찾는 문제, 즉 multilateration의 기하학적 의미와 최소제곱 기반 위치 추정 관점을 이해하기 위해 이 문헌을 참고하였다. 특히 기지국 배치가 위치 추정 안정성에 영향을 준다는 점은 본 프로젝트의 geometry condition 설계와 연결된다.
+
+본 프로젝트에서 직접 수행한 부분은 GPS 문제를 그대로 가져온 것이 아니라, 2차원 실내 RTT 환경에 맞게 바꾼 것이다. 제공된 데이터의 기지국 좌표 BS_positions 또는 p_bs를 사용하여 각 UE와 18개 anchor 사이의 실제 거리와 측정 거리 오차를 계산하였다. 그 다음 단순한 거리 원 교차 방식이 아니라, Random Forest가 예측한 p_RF를 초기 위치로 사용하고, 보정 거리 d_i^c와 anchor weight를 이용해 weighted nonlinear least squares 형태의 multilateration을 수행하였다. 또한 기지국 방향이 한쪽으로 몰리는 경우 위치 추정이 불안정해질 수 있으므로, p_RF에서 각 anchor 방향의 단위벡터를 만들고, weight가 반영된 2×2 방향 행렬 G의 조건수를 계산하였다. 이 값을 geometry_condition으로 정의하여 Router의 입력 feature로 사용하였다.
+
+따라서 [2]에서 참고한 것은 거리 기반 위치 결정, least squares, 기하학적 안정성에 대한 이론적 배경이고, 본 프로젝트에서 직접 한 일은 이를 18개 실내 RTT anchor에 대해 2차원 weighted robust multilateration과 geometry_condition feature로 구현한 것이다. 이 과정에서 RF 초기값, Huber IRLS, anchor reliability, Router feature를 결합한 점은 본 프로젝트에서 직접 설계한 부분이다.
+
+[3] T. Hastie, R. Tibshirani, and J. Friedman, The Elements of Statistical Learning, Springer, 2009.
+
+Hastie, Tibshirani, Friedman의 책은 supervised learning, ensemble learning, Random Forest, validation 기반 모델 평가의 기본 개념을 설명한다. 본 프로젝트에서는 거리 벡터와 좌표 사이의 비선형 관계를 학습하기 위해 Random Forest 회귀 모델을 사용하였고, 후보 선택 문제에는 Random Forest 기반 분류 모델을 사용하였다. 이때 [3]은 Random Forest가 여러 decision tree의 ensemble로 동작하고, 비선형 feature 관계를 비교적 안정적으로 학습할 수 있다는 이론적 배경으로 참고하였다.
+
+본 프로젝트에서 직접 수행한 부분은 단순히 d_hat 18개를 RF에 넣은 것이 아니라, anchor별 feature를 새로 설계한 것이다. 각 anchor에 대해 원본 거리 d_i, 거리 구간별 bias가 제거된 보정 거리 d_i^c, std_norm, anomaly_score, reliability를 묶어 5개 feature를 만들었고, 18개 anchor에 대해 총 90차원 RF 입력을 구성하였다. 또한 RF를 최종 결과로 바로 사용하지 않고, p_RF라는 안정적인 초기 위치 후보로 사용하였다. 이후 p_RF를 기준으로 Huber IRLS를 수행해 p_ML을 만들고, Rule 후보와 Gamma Teacher 후보를 추가하였다.
+
+Gamma Teacher와 4-Way Expert Router 역시 본 프로젝트에서 직접 구성한 부분이다. train 내부 OOF 샘플에서 p_RF와 p_ML 사이의 최적 결합 비율 gamma*를 계산하고, 이를 학습 label로 사용하여 Gamma Teacher를 만들었다. 또한 RF, ML, Rule, Teacher 네 후보 중 어느 후보가 정답에 가까운지를 train 내부 OOF 방식으로 label화하여 4-Way Expert Router를 학습하였다. 이 과정에서 residual_ratio, move_distance, geometry_condition, jackknife influence, 후보 간 spread와 같은 상태 feature를 직접 정의하였다. train.py에서는 Gamma Teacher와 Expert Router를 학습한 뒤, 최종적으로 rf_model, profile, gamma_teacher, expert_router를 model.pkl에 저장하도록 구현하였다. :contentReference[oaicite:2]{index=2}
+
+즉, [3]에서 참고한 것은 Random Forest와 ensemble learning, supervised learning 평가 방식의 기본 개념이고, 본 프로젝트에서 직접 한 일은 RTT 측위 문제에 맞는 90차원 feature 설계, RF 초기 위치 예측, OOF 기반 Gamma Teacher label 생성, 4-Way Expert Router 학습, ablation study를 통한 성능 비교이다. 최종 main.py에서는 model.pkl을 불러와 profile, rf_model, gamma_teacher, expert_router를 사용하고, 각 UE에 대해 expert_pred를 계산한 뒤 shape (2, num_user)의 p_hat을 반환하도록 구성하였다. :contentReference[oaicite:3]{index=3}
+
+종합적으로, 참고문헌 [1]은 이상치에 강한 잔차 처리와 Huber weight 설계의 근거로 사용하였고, [2]는 거리 기반 위치 추정과 anchor geometry 안정성 해석의 근거로 사용하였으며, [3]은 Random Forest와 ensemble 기반 지도학습 모델의 근거로 사용하였다. 본 프로젝트에서 직접 수행한 부분은 다음과 같다. 첫째, public RTT 데이터에서 기지국별 오차 profile을 만들고 평균 오차, median bias, 표준편차, 이상치 비율, reliability를 계산하였다. 둘째, 거리 구간별 median bias 보정을 적용하여 원본 RTT 거리값을 보정하였다. 셋째, 원본 거리, 보정 거리, anchor 불안정성, anomaly score, reliability를 결합한 90차원 RF feature를 설계하였다. 넷째, RF 예측값을 초기점으로 사용하는 Huber IRLS 기반 robust multilateration을 구현하였다. 다섯째, residual-based reweighting과 geometry_condition을 추가하여 불안정 anchor와 나쁜 기하 조건을 반영하였다. 여섯째, train 내부 OOF 방식으로 Gamma Teacher와 4-Way Expert Router를 학습하여 RF, ML, Rule, Teacher 후보 중 샘플별 최종 후보를 선택하도록 만들었다. 일곱째, hidden test에서 정답 p를 사용하지 않도록 train.py와 main.py를 분리하고, 제출용 main.py가 d_hat과 BS_positions, model.pkl만으로 p_hat을 반환하도록 구현하였다. :contentReference[oaicite:4]{index=4}
+
